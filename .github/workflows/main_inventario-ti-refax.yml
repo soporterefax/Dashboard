@@ -26,10 +26,10 @@ jobs:
 
       # 🛠️ Local Build Section (Optional)
       # The following section in your workflow is designed to catch build issues early on the client side, before deployment. This can be helpful for debugging and validation. However, if this step significantly increases deployment time and early detection is not critical for your workflow, you may remove this section to streamline the deployment process.
-      - name: Install dependencies
-        working-directory: ./backend
+      - name: Create and Start virtual environment and Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m venv antenv
+          source antenv/bin/activate
           pip install -r requirements.txt
                 
       # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
@@ -37,7 +37,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: ./backend
+          path: |
+            .
+            !antenv/
 
       # 🚫 Opting Out of Oryx Build
       # If you prefer to disable the Oryx build process during deployment, follow these steps:
@@ -61,9 +63,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_433134EB6AD44C0B9B005B42DF2BF19F }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_F9CB96436B7C474392AFA7A711CE08FE }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B0555E8990754A99B951E9EDD8BEC738 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_DCA8A83FDE73494B9DC74AFB4249606E }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_436A491C741C414E80D5984006D4FDB4 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_7306A299F068442184D4A728DCACEF00 }}
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
