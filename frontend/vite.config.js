@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   // GitHub Pages:
-  // https://TU-USUARIO.github.io/Dashboard/
+  // https://soporterefax.github.io/Dashboard/
   base: '/Dashboard/',
 
   plugins: [
