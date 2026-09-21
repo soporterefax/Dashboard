@@ -4,7 +4,6 @@ import api from "../services/api";
 import ModuloInventario from "../components/ModuloInventario";
 
 function DataPersonal() {
-
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,10 +18,8 @@ function DataPersonal() {
       const response = await api.get("/data-personal");
 
       setData(response.data);
-
     } catch (error) {
       console.error(error);
-
     } finally {
       setLoading(false);
     }
@@ -41,14 +38,10 @@ function DataPersonal() {
   }
 
   return (
-
     <ModuloInventario
       titulo="Data Personal"
       data={data}
-      columnaPrincipal="ÁREA"
-      columnaSecundaria="CARGO"
     />
-
   );
 }
 

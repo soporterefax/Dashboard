@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
+
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
@@ -7,32 +13,131 @@ function TablaResponsive({ data = [] }) {
   const [pagina, setPagina] = useState(1);
   const [porPagina, setPorPagina] = useState(20);
 
-  const [sortColumn, setSortColumn] =
-    useState(null);
+  const [sortColumn, setSortColumn] = useState(null);
+  const [sortDirection, setSortDirection] = useState("asc");
 
-  const [sortDirection, setSortDirection] =
-    useState("asc");
+  const [columnasOcultas, setColumnasOcultas] = useState([]);
 
-  const [columnasOcultas, setColumnasOcultas] =
-    useState([]);
+  // Filtros por columna
+  const [filtros, setFiltros] = useState({});
+
+  // Filtro abierto actualmente
+  const [filtroAbierto, setFiltroAbierto] = useState(null);
+
+  const filtroRef = useRef(null);
+
+  const dataSegura = Array.isArray(data)
+    ? data
+    : [];
 
   const columnasOriginales =
-    data.length > 0
-      ? Object.keys(data[0])
+    dataSegura.length > 0
+      ? Object.keys(dataSegura[0])
       : [];
 
   const columnas =
     columnasOriginales.filter(
-      (col) =>
-        !columnasOcultas.includes(col)
+      (col) => !columnasOcultas.includes(col)
     );
+
+  // ==============================
+  // CERRAR FILTRO AL HACER CLICK AFUERA
+  // ==============================
+
+  useEffect(() => {
+
+    const cerrarFiltro = (event) => {
+
+      if (
+        filtroRef.current &&
+        !filtroRef.current.contains(event.target)
+      ) {
+        setFiltroAbierto(null);
+      }
+
+    };
+
+    document.addEventListener(
+      "mousedown",
+      cerrarFiltro
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        cerrarFiltro
+      );
+    };
+
+  }, []);
+
+  // ==============================
+  // VALORES ÚNICOS POR COLUMNA
+  // ==============================
+
+  const obtenerValoresUnicos = (columna) => {
+
+    const valores = dataSegura.map(
+      (fila) => String(fila[columna] ?? "")
+    );
+
+    return [...new Set(valores)]
+      .sort((a, b) =>
+        a.localeCompare(
+          b,
+          undefined,
+          {
+            numeric: true,
+            sensitivity: "base"
+          }
+        )
+      );
+
+  };
+
+  // ==============================
+  // FILTRADO
+  // ==============================
+
+  const dataFiltrada = useMemo(() => {
+
+    return dataSegura.filter((fila) => {
+
+      return Object.entries(filtros).every(
+        ([columna, valoresSeleccionados]) => {
+
+          if (
+            !valoresSeleccionados ||
+            valoresSeleccionados.length === 0
+          ) {
+            return true;
+          }
+
+          const valorFila =
+            String(fila[columna] ?? "");
+
+          return valoresSeleccionados.includes(
+            valorFila
+          );
+
+        }
+      );
+
+    });
+
+  }, [dataSegura, filtros]);
+
+  // ==============================
+  // ORDENAMIENTO
+  // ==============================
 
   const dataOrdenada = useMemo(() => {
 
-    let resultado = [...data];
+    let resultado = [...dataFiltrada];
 
-    if (!sortColumn)
+    if (!sortColumn) {
       return resultado;
+    }
 
     resultado.sort((a, b) => {
 
@@ -46,38 +151,41 @@ function TablaResponsive({ data = [] }) {
           b[sortColumn] ?? ""
         ).toLowerCase();
 
-      if (valorA < valorB)
-        return sortDirection === "asc"
-          ? -1
-          : 1;
-
-      if (valorA > valorB)
-        return sortDirection === "asc"
-          ? 1
-          : -1;
-
-      return 0;
+      return valorA.localeCompare(
+        valorB,
+        undefined,
+        {
+          numeric: true,
+          sensitivity: "base"
+        }
+      ) *
+        (sortDirection === "asc" ? 1 : -1);
 
     });
 
     return resultado;
 
   }, [
-    data,
+    dataFiltrada,
     sortColumn,
     sortDirection
   ]);
 
-  const totalPaginas = Math.ceil(
-    dataOrdenada.length / porPagina
+  // ==============================
+  // PAGINACIÓN
+  // ==============================
+
+  const totalPaginas = Math.max(
+    1,
+    Math.ceil(
+      dataOrdenada.length / porPagina
+    )
   );
 
   useEffect(() => {
-
     setPagina(1);
-
   }, [
-    data,
+    filtros,
     porPagina,
     columnasOcultas
   ]);
@@ -94,6 +202,89 @@ function TablaResponsive({ data = [] }) {
       fin
     );
 
+  // ==============================
+  // ORDENAR
+  // ==============================
+
+  const ordenarColumna = (columna) => {
+
+    if (sortColumn === columna) {
+
+      setSortDirection(
+        sortDirection === "asc"
+          ? "desc"
+          : "asc"
+      );
+
+    } else {
+
+      setSortColumn(columna);
+      setSortDirection("asc");
+
+    }
+
+  };
+
+  // ==============================
+  // FILTRAR VALORES
+  // ==============================
+
+  const toggleValorFiltro = (
+    columna,
+    valor
+  ) => {
+
+    const actuales =
+      filtros[columna] || [];
+
+    let nuevosValores;
+
+    if (actuales.includes(valor)) {
+
+      nuevosValores =
+        actuales.filter(
+          (item) => item !== valor
+        );
+
+    } else {
+
+      nuevosValores = [
+        ...actuales,
+        valor
+      ];
+
+    }
+
+    setFiltros({
+      ...filtros,
+      [columna]: nuevosValores
+    });
+
+  };
+
+  const limpiarFiltroColumna = (
+    columna
+  ) => {
+
+    const nuevosFiltros = {
+      ...filtros
+    };
+
+    delete nuevosFiltros[columna];
+
+    setFiltros(nuevosFiltros);
+
+  };
+
+  const limpiarTodosFiltros = () => {
+    setFiltros({});
+    setPagina(1);
+  };
+
+  // ==============================
+  // EXPORTAR
+  // ==============================
+
   const exportarExcel = () => {
 
     const dataExportada =
@@ -102,10 +293,7 @@ function TablaResponsive({ data = [] }) {
         const nuevaFila = {};
 
         columnas.forEach((col) => {
-
-          nuevaFila[col] =
-            fila[col];
-
+          nuevaFila[col] = fila[col];
         });
 
         return nuevaFila;
@@ -151,6 +339,15 @@ function TablaResponsive({ data = [] }) {
 
   };
 
+  const totalFiltrosActivos =
+    Object.values(filtros)
+      .filter(
+        (valores) =>
+          valores &&
+          valores.length > 0
+      )
+      .length;
+
   return (
 
     <div
@@ -164,7 +361,7 @@ function TablaResponsive({ data = [] }) {
       "
     >
 
-      {/* HEADER */}
+      {/* CABECERA DE TABLA */}
       <div
         className="
           px-6
@@ -189,14 +386,37 @@ function TablaResponsive({ data = [] }) {
           </h3>
 
           <p className="text-slate-300 text-sm">
-            {data.length} registros encontrados
+
+            {dataOrdenada.length}
+            {" "}
+            de
+            {" "}
+            {dataSegura.length}
+            {" "}
+            registros
+
           </p>
 
         </div>
 
-        <div className="flex flex-wrap gap-3 items-center">
+        <div
+          className="
+            flex
+            flex-wrap
+            gap-3
+            items-center
+          "
+        >
 
-          <div className="flex items-center gap-2">
+          {/* MOSTRAR REGISTROS */}
+
+          <div
+            className="
+              flex
+              items-center
+              gap-2
+            "
+          >
 
             <span className="text-sm">
               Mostrar:
@@ -216,18 +436,54 @@ function TablaResponsive({ data = [] }) {
                 text-slate-800
                 rounded-lg
                 px-3
-                py-1
+                py-2
               "
             >
 
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
+              <option value={10}>
+                10
+              </option>
+
+              <option value={20}>
+                20
+              </option>
+
+              <option value={50}>
+                50
+              </option>
+
+              <option value={100}>
+                100
+              </option>
 
             </select>
 
           </div>
+
+          {/* LIMPIAR FILTROS */}
+
+          {totalFiltrosActivos > 0 && (
+
+            <button
+              onClick={limpiarTodosFiltros}
+              className="
+                px-4
+                py-2
+                bg-slate-600
+                text-white
+                rounded-xl
+                hover:bg-slate-500
+                transition
+              "
+            >
+              Limpiar filtros
+              {" "}
+              ({totalFiltrosActivos})
+            </button>
+
+          )}
+
+          {/* EXPORTAR */}
 
           <button
             onClick={exportarExcel}
@@ -248,7 +504,7 @@ function TablaResponsive({ data = [] }) {
 
       </div>
 
-      {/* COLUMNAS */}
+      {/* MOSTRAR / OCULTAR COLUMNAS */}
       <div
         className="
           flex
@@ -260,55 +516,71 @@ function TablaResponsive({ data = [] }) {
         "
       >
 
-        {columnasOriginales.map((columna) => (
+        <span
+          className="
+            text-sm
+            font-semibold
+            text-slate-600
+            mr-2
+            self-center
+          "
+        >
+          Columnas:
+        </span>
 
-          <button
-            key={columna}
-            onClick={() => {
+        {columnasOriginales.map(
+          (columna) => (
 
-              if (
-                columnasOcultas.includes(
-                  columna
-                )
-              ) {
+            <button
+              key={columna}
+              onClick={() => {
 
-                setColumnasOcultas(
-                  columnasOcultas.filter(
-                    (c) =>
-                      c !== columna
+                if (
+                  columnasOcultas.includes(
+                    columna
                   )
-                );
+                ) {
 
-              } else {
+                  setColumnasOcultas(
+                    columnasOcultas.filter(
+                      (c) =>
+                        c !== columna
+                    )
+                  );
 
-                setColumnasOcultas([
-                  ...columnasOcultas,
-                  columna
-                ]);
+                } else {
 
-              }
+                  setColumnasOcultas([
+                    ...columnasOcultas,
+                    columna
+                  ]);
 
-            }}
-            className={`
-              px-3
-              py-1
-              rounded-xl
-              text-sm
-              transition
+                }
 
-              ${
-                columnasOcultas.includes(
-                  columna
-                )
-                  ? "bg-red-100 text-red-700"
-                  : "bg-green-100 text-green-700"
-              }
-            `}
-          >
-            {columna}
-          </button>
+              }}
+              className={`
+                px-3
+                py-1
+                rounded-lg
+                text-xs
+                transition
 
-        ))}
+                ${
+                  columnasOcultas.includes(
+                    columna
+                  )
+                    ? "bg-slate-200 text-slate-500"
+                    : "bg-blue-100 text-blue-700"
+                }
+              `}
+            >
+
+              {columna}
+
+            </button>
+
+          )
+        )}
 
       </div>
 
@@ -340,69 +612,299 @@ function TablaResponsive({ data = [] }) {
 
             <tr>
 
-              {columnas.map((columna) => (
+              {columnas.map(
+                (columna) => {
 
-                <th
-                  key={columna}
-                  onClick={() => {
+                  const filtroActivo =
+                    filtros[columna]?.length > 0;
 
-                    if (
-                      sortColumn === columna
-                    ) {
+                  return (
 
-                      setSortDirection(
-                        sortDirection === "asc"
-                          ? "desc"
-                          : "asc"
-                      );
+                    <th
+                      key={columna}
+                      className="
+                        relative
+                        p-0
+                        text-left
+                        whitespace-nowrap
+                        font-semibold
+                        border-b
+                        border-slate-600
+                      "
+                    >
 
-                    } else {
+                      <div
+                        className="
+                          flex
+                          items-center
+                          justify-between
+                          gap-3
+                          px-4
+                          py-3
+                        "
+                      >
 
-                      setSortColumn(
-                        columna
-                      );
+                        {/* ORDENAR */}
 
-                      setSortDirection(
-                        "asc"
-                      );
+                        <button
+                          onClick={() =>
+                            ordenarColumna(
+                              columna
+                            )
+                          }
+                          className="
+                            flex
+                            items-center
+                            gap-2
+                            hover:text-blue-200
+                          "
+                        >
 
-                    }
+                          <span>
+                            {columna}
+                          </span>
 
-                  }}
-                  className="
-                    p-4
-                    text-left
-                    whitespace-nowrap
-                    font-semibold
-                    border-b
-                    border-slate-600
-                    cursor-pointer
-                    select-none
-                    hover:bg-slate-600
-                  "
-                >
+                          {sortColumn ===
+                            columna && (
 
-                  <div className="flex items-center gap-2">
+                            <span>
 
-                    {columna}
+                              {sortDirection ===
+                              "asc"
+                                ? "▲"
+                                : "▼"}
 
-                    {sortColumn === columna && (
+                            </span>
 
-                      <span>
+                          )}
 
-                        {sortDirection === "asc"
-                          ? "▲"
-                          : "▼"}
+                        </button>
 
-                      </span>
+                        {/* BOTÓN FILTRO */}
 
-                    )}
+                        <button
+                          onClick={(e) => {
 
-                  </div>
+                            e.stopPropagation();
 
-                </th>
+                            setFiltroAbierto(
+                              filtroAbierto ===
+                                columna
+                                ? null
+                                : columna
+                            );
 
-              ))}
+                          }}
+                          className={`
+                            w-8
+                            h-8
+                            flex
+                            items-center
+                            justify-center
+                            rounded-lg
+                            transition
+
+                            ${
+                              filtroActivo
+                                ? "bg-blue-500 text-white"
+                                : "hover:bg-slate-600"
+                            }
+                          `}
+                          title={`Filtrar ${columna}`}
+                        >
+                          ▾
+                        </button>
+
+                      </div>
+
+                      {/* MENÚ FILTRO */}
+
+                      {filtroAbierto ===
+                        columna && (
+
+                        <div
+                          ref={filtroRef}
+                          className="
+                            absolute
+                            top-full
+                            right-0
+                            z-50
+                            mt-1
+                            w-72
+                            bg-white
+                            text-slate-800
+                            rounded-xl
+                            shadow-2xl
+                            border
+                            border-slate-200
+                            overflow-hidden
+                          "
+                        >
+
+                          <div
+                            className="
+                              p-3
+                              border-b
+                              bg-slate-50
+                            "
+                          >
+
+                            <p
+                              className="
+                                font-semibold
+                                text-sm
+                              "
+                            >
+                              Filtrar por {columna}
+                            </p>
+
+                          </div>
+
+                          {/* TODOS */}
+
+                          <div
+                            className="
+                              px-3
+                              py-2
+                              border-b
+                            "
+                          >
+
+                            <button
+                              onClick={() =>
+                                limpiarFiltroColumna(
+                                  columna
+                                )
+                              }
+                              className="
+                                text-blue-600
+                                text-sm
+                                hover:underline
+                              "
+                            >
+                              Mostrar todos
+                            </button>
+
+                          </div>
+
+                          {/* VALORES */}
+
+                          <div
+                            className="
+                              max-h-64
+                              overflow-y-auto
+                              p-2
+                            "
+                          >
+
+                            {obtenerValoresUnicos(
+                              columna
+                            ).map(
+                              (valor) => {
+
+                                const seleccionado =
+                                  filtros[
+                                    columna
+                                  ]?.includes(
+                                    valor
+                                  ) ||
+                                  false;
+
+                                return (
+
+                                  <label
+                                    key={valor}
+                                    className="
+                                      flex
+                                      items-center
+                                      gap-2
+                                      px-2
+                                      py-2
+                                      rounded-lg
+                                      hover:bg-slate-100
+                                      cursor-pointer
+                                    "
+                                  >
+
+                                    <input
+                                      type="checkbox"
+                                      checked={
+                                        seleccionado
+                                      }
+                                      onChange={() =>
+                                        toggleValorFiltro(
+                                          columna,
+                                          valor
+                                        )
+                                      }
+                                    />
+
+                                    <span
+                                      className="
+                                        truncate
+                                        text-sm
+                                      "
+                                      title={
+                                        valor ||
+                                        "(Vacío)"
+                                      }
+                                    >
+
+                                      {valor ||
+                                        "(Vacío)"}
+
+                                    </span>
+
+                                  </label>
+
+                                );
+
+                              }
+                            )}
+
+                          </div>
+
+                          <div
+                            className="
+                              p-3
+                              border-t
+                              bg-slate-50
+                              flex
+                              justify-end
+                            "
+                          >
+
+                            <button
+                              onClick={() =>
+                                setFiltroAbierto(
+                                  null
+                                )
+                              }
+                              className="
+                                px-4
+                                py-2
+                                bg-slate-800
+                                text-white
+                                rounded-lg
+                                text-sm
+                                hover:bg-slate-700
+                              "
+                            >
+                              Cerrar
+                            </button>
+
+                          </div>
+
+                        </div>
+
+                      )}
+
+                    </th>
+
+                  );
+
+                }
+              )}
 
             </tr>
 
@@ -410,43 +912,75 @@ function TablaResponsive({ data = [] }) {
 
           <tbody>
 
-            {datosPagina.map((fila, index) => (
+            {datosPagina.length > 0 ? (
 
-              <tr
-                key={index}
-                className={`
-                  ${
-                    index % 2 === 0
-                      ? "bg-white"
-                      : "bg-slate-50"
-                  }
+              datosPagina.map(
+                (fila, index) => (
 
-                  hover:bg-blue-50
-                  transition
-                `}
-              >
+                  <tr
+                    key={`${pagina}-${index}`}
+                    className={`
+                      ${
+                        index % 2 === 0
+                          ? "bg-white"
+                          : "bg-slate-50"
+                      }
 
-                {columnas.map((columna) => (
-
-                  <td
-                    key={columna}
-                    className="
-                      p-3
-                      border-b
-                      border-slate-100
-                      whitespace-nowrap
-                    "
+                      hover:bg-blue-50
+                      transition
+                    `}
                   >
-                    {String(
-                      fila[columna] ?? ""
-                    )}
-                  </td>
 
-                ))}
+                    {columnas.map(
+                      (columna) => (
+
+                        <td
+                          key={columna}
+                          className="
+                            p-3
+                            border-b
+                            border-slate-100
+                            whitespace-nowrap
+                          "
+                        >
+
+                          {String(
+                            fila[
+                              columna
+                            ] ?? ""
+                          )}
+
+                        </td>
+
+                      )
+                    )}
+
+                  </tr>
+
+                )
+              )
+
+            ) : (
+
+              <tr>
+
+                <td
+                  colSpan={
+                    columnas.length || 1
+                  }
+                  className="
+                    text-center
+                    p-10
+                    text-slate-500
+                  "
+                >
+                  No se encontraron registros
+                  con los filtros seleccionados.
+                </td>
 
               </tr>
 
-            ))}
+            )}
 
           </tbody>
 
@@ -469,14 +1003,17 @@ function TablaResponsive({ data = [] }) {
         "
       >
 
-        <div className="text-sm text-slate-600">
+        <div
+          className="
+            text-sm
+            text-slate-600
+          "
+        >
 
-          Mostrando
-
-          {" "}
+          Mostrando{" "}
 
           <strong>
-            {data.length === 0
+            {dataOrdenada.length === 0
               ? 0
               : inicio + 1}
           </strong>
@@ -486,27 +1023,33 @@ function TablaResponsive({ data = [] }) {
           <strong>
             {Math.min(
               fin,
-              data.length
+              dataOrdenada.length
             )}
           </strong>
 
           {" "}de{" "}
 
           <strong>
-            {data.length}
+            {dataOrdenada.length}
           </strong>
 
           {" "}registros
 
         </div>
 
-        <div className="flex items-center gap-2">
+        <div
+          className="
+            flex
+            items-center
+            gap-2
+          "
+        >
 
           <button
             disabled={pagina === 1}
             onClick={() =>
               setPagina(
-                pagina - 1
+                (prev) => prev - 1
               )
             }
             className="
@@ -532,19 +1075,21 @@ function TablaResponsive({ data = [] }) {
               font-semibold
             "
           >
+
             {pagina}
             {" / "}
-            {totalPaginas || 1}
+            {totalPaginas}
+
           </div>
 
           <button
             disabled={
-              pagina === totalPaginas ||
-              totalPaginas === 0
+              pagina >=
+              totalPaginas
             }
             onClick={() =>
               setPagina(
-                pagina + 1
+                (prev) => prev + 1
               )
             }
             className="
