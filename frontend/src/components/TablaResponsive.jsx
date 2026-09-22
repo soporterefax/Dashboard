@@ -646,13 +646,13 @@ function TablaResponsive({ data = [] }) {
 
                         <div
                           ref={filtroRef}
-                          className="
+                          className={`
                             absolute
                             top-full
-                            right-0
                             z-50
                             mt-1
-                            w-72
+                            w-64
+                            max-w-[calc(100vw-40px)]
                             bg-white
                             text-slate-800
                             rounded-xl
@@ -660,7 +660,13 @@ function TablaResponsive({ data = [] }) {
                             border
                             border-slate-200
                             overflow-hidden
-                          "
+
+                            ${
+                              columnas.indexOf(columna) <= 1
+                                ? "left-0"
+                                : "right-0"
+                            }
+                          `}
                         >
 
                           <div
