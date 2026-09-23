@@ -18,6 +18,8 @@ function TablaResponsive({ data = [] }) {
 
   const [columnasOcultas, setColumnasOcultas] = useState([]);
 
+  const [busquedasFiltro, setBusquedasFiltro] = useState({});
+
   // Filtros por columna
   const [filtros, setFiltros] = useState({});
 
@@ -76,12 +78,11 @@ function TablaResponsive({ data = [] }) {
   // ==============================
 
   const obtenerValoresUnicos = (columna) => {
-
     const valores = dataSegura.map(
       (fila) => String(fila[columna] ?? "")
     );
 
-    return [...new Set(valores)]
+    const unicos = [...new Set(valores)]
       .sort((a, b) =>
         a.localeCompare(
           b,
@@ -93,6 +94,20 @@ function TablaResponsive({ data = [] }) {
         )
       );
 
+    const textoBusqueda =
+      (busquedasFiltro[columna] || "")
+        .toLowerCase()
+        .trim();
+
+    if (!textoBusqueda) {
+      return unicos;
+    }
+
+    return unicos.filter((valor) =>
+      valor
+        .toLowerCase()
+        .includes(textoBusqueda)
+    );
   };
 
   // ==============================
@@ -689,6 +704,35 @@ function TablaResponsive({ data = [] }) {
                             >
                               Filtrar por {columna}
                             </p>
+
+                            <input
+                              type="text"
+                              value={busquedasFiltro[columna] || ""}
+                              onChange={(e) =>
+                                setBusquedasFiltro({
+                                  ...busquedasFiltro,
+                                  [columna]: e.target.value
+                                })
+                              }
+                              placeholder="Buscar valor..."
+                              autoFocus
+                              className="
+                                mt-3
+                                w-full
+                                px-3
+                                py-2
+                                border
+                                border-slate-300
+                                rounded-lg
+                                text-sm
+                                text-slate-800
+                                bg-white
+                                outline-none
+                                focus:ring-2
+                                focus:ring-blue-500
+                                focus:border-blue-500
+                              "
+                            />
 
                           </div>
 
