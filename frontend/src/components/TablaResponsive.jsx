@@ -508,10 +508,18 @@ function TablaResponsive({ data = [] }) {
 
       {/* TABLA */}
       <div
-        className="
+        className={`
           overflow-auto
           max-h-[700px]
-        "
+          transition-all
+          duration-200
+
+          ${
+            filtroAbierto
+              ? "min-h-[420px]"
+              : ""
+          }
+        `}
       >
 
         <table
@@ -649,9 +657,9 @@ function TablaResponsive({ data = [] }) {
                           className={`
                             absolute
                             top-full
-                            z-50
-                            mt-1
-                            w-64
+                            z-[100]
+                            mt-2
+                            w-72
                             max-w-[calc(100vw-40px)]
                             bg-white
                             text-slate-800
@@ -659,7 +667,6 @@ function TablaResponsive({ data = [] }) {
                             shadow-2xl
                             border
                             border-slate-200
-                            overflow-hidden
 
                             ${
                               columnas.indexOf(columna) <= 1
@@ -719,7 +726,7 @@ function TablaResponsive({ data = [] }) {
 
                           <div
                             className="
-                              max-h-64
+                              max-h-72
                               overflow-y-auto
                               p-2
                             "
