@@ -358,6 +358,9 @@ function TablaResponsive({ data = [] }) {
         border
         border-slate-200
         overflow-hidden
+        min-h-[700px]
+        flex
+        flex-col
       "
     >
 
@@ -508,18 +511,12 @@ function TablaResponsive({ data = [] }) {
 
       {/* TABLA */}
       <div
-        className={`
+        className="
           overflow-auto
+          flex-1
+          min-h-[540px]
           max-h-[700px]
-          transition-all
-          duration-200
-
-          ${
-            filtroAbierto
-              ? "min-h-[420px]"
-              : ""
-          }
-        `}
+        "
       >
 
         <table
