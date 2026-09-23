@@ -1,13 +1,33 @@
 from fastapi import APIRouter, Query
 import unicodedata
 
+from typing import Any, Dict
+from pydantic import BaseModel
+
 from app.services.excel_service import (
     obtener_hoja,
     obtener_kpis_principales,
     obtener_etag_actual,
+    actualizar_registro,
 )
 
 router = APIRouter()
+
+
+# =========================
+# MODELO DE ACTUALIZACIÓN
+# =========================
+
+class ActualizarRegistroRequest(BaseModel):
+    hoja: str
+    fila_excel: int
+    datos: Dict[str, Any]
+    etag: str | None = None
+
+
+# =========================
+# CACHE DE PERFILES
+# =========================
 
 _PERFILES_CACHE = {
     "etag": None,
@@ -19,6 +39,7 @@ _PERFILES_CACHE = {
     "modem": {},
 }
 
+
 # =========================
 # DASHBOARD
 # =========================
@@ -26,6 +47,23 @@ _PERFILES_CACHE = {
 @router.get("/kpis")
 def kpis():
     return obtener_kpis_principales()
+
+
+# =========================
+# ACTUALIZAR REGISTRO
+# =========================
+
+@router.patch("/registro")
+def editar_registro(payload: ActualizarRegistroRequest):
+
+    resultado = actualizar_registro(
+        nombre_hoja=payload.hoja,
+        fila_excel=payload.fila_excel,
+        nuevos_datos=payload.datos,
+        etag_esperado=payload.etag,
+    )
+
+    return resultado
 
 
 # =========================
@@ -156,23 +194,41 @@ def normalizar(texto):
 
     return texto.upper().strip()
 
+
+# =========================
+# AGRUPAR POR USUARIO
+# =========================
+
 def _agrupar_por_usuario(registros, campo_usuario):
+
     indice = {}
 
     if isinstance(registros, dict):
         return indice
 
     for item in registros:
-        usuario = normalizar(item.get(campo_usuario, ""))
+
+        usuario = normalizar(
+            item.get(campo_usuario, "")
+        )
 
         if not usuario:
             continue
 
-        indice.setdefault(usuario, []).append(item)
+        indice.setdefault(
+            usuario,
+            []
+        ).append(item)
 
     return indice
 
+
+# =========================
+# CONSTRUIR CACHE PERFILES
+# =========================
+
 def _construir_cache_perfiles():
+
     global _PERFILES_CACHE
 
     etag_actual = obtener_etag_actual()
@@ -185,19 +241,44 @@ def _construir_cache_perfiles():
     ):
         return
 
-    personas_data = obtener_hoja("DATA PERSONAL")
-    laptops_data = obtener_hoja("LAPTOPS")
-    celulares_data = obtener_hoja("CELULARES")
-    chips_data = obtener_hoja("ASIGNACIÓN CHIPS")
-    exchange_data = obtener_hoja("EXCHANGE")
-    modem_data = obtener_hoja("MODEM")
+    personas_data = obtener_hoja(
+        "DATA PERSONAL"
+    )
+
+    laptops_data = obtener_hoja(
+        "LAPTOPS"
+    )
+
+    celulares_data = obtener_hoja(
+        "CELULARES"
+    )
+
+    chips_data = obtener_hoja(
+        "ASIGNACIÓN CHIPS"
+    )
+
+    exchange_data = obtener_hoja(
+        "EXCHANGE"
+    )
+
+    modem_data = obtener_hoja(
+        "MODEM"
+    )
 
     personas = {}
 
-    if not isinstance(personas_data, dict):
+    if not isinstance(
+        personas_data,
+        dict
+    ):
+
         for persona in personas_data:
+
             usuario = normalizar(
-                persona.get("USUARIO", "")
+                persona.get(
+                    "USUARIO",
+                    ""
+                )
             )
 
             if usuario:
@@ -205,6 +286,7 @@ def _construir_cache_perfiles():
 
     _PERFILES_CACHE = {
         "etag": etag_actual,
+
         "personas": personas,
 
         "laptops": _agrupar_por_usuario(
@@ -233,6 +315,7 @@ def _construir_cache_perfiles():
         ),
     }
 
+
 # =========================
 # BUSCADOR GLOBAL
 # =========================
@@ -240,21 +323,40 @@ def _construir_cache_perfiles():
 @router.get("/busqueda-global")
 def busqueda_global(
     q: str = Query(""),
-    limite: int = Query(30, ge=1, le=100),
+    limite: int = Query(
+        30,
+        ge=1,
+        le=100
+    ),
 ):
 
     if not q:
         return []
 
     hojas = {
-        "Data Personal": "DATA PERSONAL",
-        "Laptops": "LAPTOPS",
-        "Celulares": "CELULARES",
-        "Chips": "ASIGNACIÓN CHIPS",
-        "Exchange": "EXCHANGE",
-        "Monitores": "MONITORES",
-        "Impresoras": "IMPRESORAS",
-        "Modem": "MODEM"
+        "Data Personal":
+            "DATA PERSONAL",
+
+        "Laptops":
+            "LAPTOPS",
+
+        "Celulares":
+            "CELULARES",
+
+        "Chips":
+            "ASIGNACIÓN CHIPS",
+
+        "Exchange":
+            "EXCHANGE",
+
+        "Monitores":
+            "MONITORES",
+
+        "Impresoras":
+            "IMPRESORAS",
+
+        "Modem":
+            "MODEM",
     }
 
     resultados = []
@@ -263,9 +365,14 @@ def busqueda_global(
 
     for modulo, hoja in hojas.items():
 
-        registros = obtener_hoja(hoja)
+        registros = obtener_hoja(
+            hoja
+        )
 
-        if isinstance(registros, dict):
+        if isinstance(
+            registros,
+            dict
+        ):
             continue
 
         for fila in registros:
@@ -274,17 +381,26 @@ def busqueda_global(
 
             for valor in fila.values():
 
-                if texto in normalizar(valor):
+                if texto in normalizar(
+                    valor
+                ):
                     encontrado = True
                     break
 
             if encontrado:
+
                 resultados.append({
-                    "modulo": modulo,
-                    "datos": fila,
+                    "modulo":
+                        modulo,
+
+                    "datos":
+                        fila,
                 })
 
-                if len(resultados) >= limite:
+                if (
+                    len(resultados)
+                    >= limite
+                ):
                     return resultados
 
     return resultados
@@ -295,7 +411,9 @@ def busqueda_global(
 # =========================
 
 @router.get("/busqueda-personas")
-def busqueda_personas(q: str = Query("")):
+def busqueda_personas(
+    q: str = Query("")
+):
 
     if not q:
         return []
@@ -306,22 +424,47 @@ def busqueda_personas(q: str = Query("")):
 
     resultados = []
 
-    for usuario, persona in _PERFILES_CACHE["personas"].items():
+    for (
+        usuario,
+        persona
+    ) in _PERFILES_CACHE[
+        "personas"
+    ].items():
 
         nombre = normalizar(
-            persona.get("NOMBRES Y APELLIDOS", "")
+            persona.get(
+                "NOMBRES Y APELLIDOS",
+                ""
+            )
         )
 
-        if texto in usuario or texto in nombre:
+        if (
+            texto in usuario
+            or texto in nombre
+        ):
 
             resultados.append({
-                "usuario": persona.get("USUARIO"),
-                "nombre": persona.get("NOMBRES Y APELLIDOS"),
-                "cargo": persona.get("CARGO"),
-                "area": persona.get("ÁREA"),
+                "usuario":
+                    persona.get(
+                        "USUARIO"
+                    ),
+
+                "nombre":
+                    persona.get(
+                        "NOMBRES Y APELLIDOS"
+                    ),
+
+                "cargo":
+                    persona.get(
+                        "CARGO"
+                    ),
+
+                "area":
+                    persona.get(
+                        "ÁREA"
+                    ),
             })
 
-        # No necesitamos devolver 500 coincidencias.
         if len(resultados) >= 20:
             break
 
@@ -332,54 +475,102 @@ def busqueda_personas(q: str = Query("")):
 # PERFIL COMPLETO
 # =========================
 
-@router.get("/persona-completa/{usuario}")
-def persona_completa(usuario: str):
+@router.get(
+    "/persona-completa/{usuario}"
+)
+def persona_completa(
+    usuario: str
+):
 
     _construir_cache_perfiles()
 
-    usuario_buscado = normalizar(usuario)
-
-    persona = _PERFILES_CACHE["personas"].get(
-        usuario_buscado
+    usuario_buscado = normalizar(
+        usuario
     )
 
-    laptops = _PERFILES_CACHE["laptops"].get(
-        usuario_buscado,
-        []
+    persona = (
+        _PERFILES_CACHE[
+            "personas"
+        ].get(
+            usuario_buscado
+        )
     )
 
-    celulares = _PERFILES_CACHE["celulares"].get(
-        usuario_buscado,
-        []
+    laptops = (
+        _PERFILES_CACHE[
+            "laptops"
+        ].get(
+            usuario_buscado,
+            []
+        )
     )
 
-    chips = _PERFILES_CACHE["chips"].get(
-        usuario_buscado,
-        []
+    celulares = (
+        _PERFILES_CACHE[
+            "celulares"
+        ].get(
+            usuario_buscado,
+            []
+        )
     )
 
-    exchange = _PERFILES_CACHE["exchange"].get(
-        usuario_buscado,
-        []
+    chips = (
+        _PERFILES_CACHE[
+            "chips"
+        ].get(
+            usuario_buscado,
+            []
+        )
     )
 
-    modem = _PERFILES_CACHE["modem"].get(
-        usuario_buscado,
-        []
+    exchange = (
+        _PERFILES_CACHE[
+            "exchange"
+        ].get(
+            usuario_buscado,
+            []
+        )
+    )
+
+    modem = (
+        _PERFILES_CACHE[
+            "modem"
+        ].get(
+            usuario_buscado,
+            []
+        )
     )
 
     return {
         "persona": persona,
 
-        "total_laptops": len(laptops),
-        "total_celulares": len(celulares),
-        "total_chips": len(chips),
-        "total_exchange": len(exchange),
-        "total_modem": len(modem),
+        "total_laptops":
+            len(laptops),
 
-        "laptops": laptops,
-        "celulares": celulares,
-        "chips": chips,
-        "exchange": exchange,
-        "modem": modem,
+        "total_celulares":
+            len(celulares),
+
+        "total_chips":
+            len(chips),
+
+        "total_exchange":
+            len(exchange),
+
+        "total_modem":
+            len(modem),
+
+        "laptops":
+            laptops,
+
+        "celulares":
+            celulares,
+
+        "chips":
+            chips,
+
+        "exchange":
+            exchange,
+
+        "modem":
+            modem,
     }

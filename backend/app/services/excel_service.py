@@ -1,9 +1,16 @@
+import io
 import os
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import load_workbook
 
-from app.services.onedrive_service import obtener_excel_onedrive, estado_fuente_onedrive
+from app.services.onedrive_service import (
+    obtener_excel_onedrive,
+    estado_fuente_onedrive,
+    subir_excel_onedrive,
+    invalidar_cache_onedrive,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 RUTA_EXCEL_LOCAL = BASE_DIR / "data" / "INVENTARIO GENERAL TI - ACTUAL.xlsx"
@@ -22,6 +29,22 @@ _HOJAS_CACHE = {
 def _data_source() -> str:
     return os.getenv("DATA_SOURCE", "local").strip().lower()
 
+def invalidar_caches_excel():
+    global _KPI_CACHE
+    global _HOJAS_CACHE
+
+    _KPI_CACHE = {
+        "etag": None,
+        "data": None,
+    }
+
+    _HOJAS_CACHE = {
+        "etag": None,
+        "hojas": {},
+    }
+
+    if _data_source() == "onedrive":
+        invalidar_cache_onedrive()
 
 def obtener_fuente_excel():
     """Retorna una fuente compatible con pandas.read_excel.
@@ -96,11 +119,29 @@ def obtener_hoja(nombre_hoja):
     try:
         df = _obtener_dataframe_hoja(nombre_hoja)
 
-        return df.to_dict(orient="records")
+        registros = df.to_dict(
+            orient="records"
+        )
+
+        # Pandas usa índice 0 para la primera fila de datos.
+        # En Excel:
+        # fila 1 = encabezados
+        # fila 2 = primer registro
+        #
+        # Guardamos este dato únicamente como identificador técnico.
+        for indice, registro in enumerate(
+            registros,
+            start=2,
+        ):
+            registro["__row_id"] = indice
+
+        return registros
 
     except ValueError as e:
         return {
-            "error": f"No se encontró la hoja '{nombre_hoja}': {str(e)}"
+            "error":
+                f"No se encontró la hoja "
+                f"'{nombre_hoja}': {str(e)}"
         }
 
     except Exception as e:
@@ -199,3 +240,195 @@ def obtener_etag_actual():
         return estado.get("etag")
     except Exception:
         return None
+
+def actualizar_registro(
+    nombre_hoja: str,
+    fila_excel: int,
+    nuevos_datos: dict,
+    etag_esperado: str | None = None,
+):
+    """
+    Actualiza una fila existente del Excel.
+
+    nombre_hoja:
+        Nombre exacto de la hoja.
+
+    fila_excel:
+        Número real de fila dentro del Excel.
+
+    nuevos_datos:
+        Diccionario:
+        {
+            "USUARIO": "...",
+            "CARGO": "...",
+            ...
+        }
+
+    etag_esperado:
+        eTag que tenía el archivo antes de editar.
+        Sirve para evitar sobrescribir cambios externos.
+    """
+
+    if not nombre_hoja:
+        raise ValueError(
+            "Debe especificarse la hoja."
+        )
+
+    if not isinstance(fila_excel, int):
+        raise ValueError(
+            "fila_excel debe ser un número entero."
+        )
+
+    if fila_excel < 2:
+        raise ValueError(
+            "No se puede modificar la fila de encabezados."
+        )
+
+    if not isinstance(nuevos_datos, dict):
+        raise ValueError(
+            "Los datos deben enviarse como un objeto."
+        )
+
+    if not nuevos_datos:
+        raise ValueError(
+            "No se recibieron campos para actualizar."
+        )
+
+    source = _data_source()
+
+    if source != "onedrive":
+        raise RuntimeError(
+            "La edición actualmente está habilitada "
+            "solo para DATA_SOURCE=onedrive."
+        )
+
+    # --------------------------------------------------
+    # 1. Descargar siempre la versión actual
+    # --------------------------------------------------
+
+    excel_bytes = obtener_excel_onedrive(
+        force_refresh=True
+    )
+
+    # --------------------------------------------------
+    # 2. Abrir workbook
+    # --------------------------------------------------
+
+    workbook = load_workbook(
+        excel_bytes
+    )
+
+    if nombre_hoja not in workbook.sheetnames:
+        raise ValueError(
+            f"No existe la hoja '{nombre_hoja}'."
+        )
+
+    worksheet = workbook[nombre_hoja]
+
+    # --------------------------------------------------
+    # 3. Leer encabezados de Excel
+    # --------------------------------------------------
+
+    encabezados = {}
+
+    for columna in range(
+        1,
+        worksheet.max_column + 1
+    ):
+
+        valor = worksheet.cell(
+            row=1,
+            column=columna
+        ).value
+
+        if valor is None:
+            continue
+
+        encabezados[
+            str(valor).strip()
+        ] = columna
+
+    # --------------------------------------------------
+    # 4. Validar fila
+    # --------------------------------------------------
+
+    if fila_excel > worksheet.max_row:
+        raise ValueError(
+            f"La fila {fila_excel} ya no existe "
+            f"en la hoja '{nombre_hoja}'."
+        )
+
+    # --------------------------------------------------
+    # 5. Modificar únicamente las columnas recibidas
+    # --------------------------------------------------
+
+    campos_actualizados = []
+
+    for campo, nuevo_valor in nuevos_datos.items():
+
+        # Campos internos del sistema
+        if campo.startswith("__"):
+            continue
+
+        if campo not in encabezados:
+            continue
+
+        numero_columna = encabezados[campo]
+
+        worksheet.cell(
+            row=fila_excel,
+            column=numero_columna
+        ).value = nuevo_valor
+
+        campos_actualizados.append(
+            campo
+        )
+
+    if not campos_actualizados:
+        raise ValueError(
+            "Ninguno de los campos enviados "
+            "existe en la hoja de Excel."
+        )
+
+    # --------------------------------------------------
+    # 6. Guardar workbook en memoria
+    # --------------------------------------------------
+
+    salida = io.BytesIO()
+
+    workbook.save(
+        salida
+    )
+
+    contenido_actualizado = (
+        salida.getvalue()
+    )
+
+    # --------------------------------------------------
+    # 7. Subir Excel a SharePoint
+    # --------------------------------------------------
+
+    resultado = subir_excel_onedrive(
+        contenido=contenido_actualizado,
+        etag_esperado=etag_esperado,
+    )
+
+    # --------------------------------------------------
+    # 8. Invalidar cache
+    # --------------------------------------------------
+
+    invalidar_caches_excel()
+
+    return {
+        "ok": True,
+        "mensaje":
+            "Registro actualizado correctamente.",
+        "hoja": nombre_hoja,
+        "fila_excel": fila_excel,
+        "campos_actualizados":
+            campos_actualizados,
+        "archivo":
+            resultado.get("archivo"),
+        "etag":
+            resultado.get("etag"),
+    }

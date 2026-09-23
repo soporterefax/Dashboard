@@ -34,7 +34,10 @@ function TablaResponsive({ data = [] }) {
 
   const columnasOriginales =
     dataSegura.length > 0
-      ? Object.keys(dataSegura[0])
+      ? Object.keys(dataSegura[0]).filter(
+          (columna) =>
+            !columna.startsWith("__")
+        )
       : [];
 
   const columnas =

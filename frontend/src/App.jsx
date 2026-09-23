@@ -5,6 +5,8 @@ import {
   Navigate
 } from "react-router-dom";
 
+import { HashRouter } from "react-router-dom";
+
 import Sidebar from "./components/Sidebar";
 
 import DashboardGeneral from "./pages/DashboardGeneral";
