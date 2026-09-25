@@ -12,14 +12,12 @@ from app.services.excel_service import obtener_estado_fuente
 # =========================
 # VARIABLES DE ENTORNO
 # =========================
-
 load_dotenv()
 
 
 # =========================
 # FASTAPI
 # =========================
-
 app = FastAPI(
     title="API Inventario TI",
     version="1.0.0",
@@ -29,7 +27,6 @@ app = FastAPI(
 # =========================
 # CORS
 # =========================
-
 cors_origins = [
     origin.strip()
     for origin in os.getenv(

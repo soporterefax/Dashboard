@@ -10,6 +10,7 @@ from app.services.onedrive_service import (
     estado_fuente_onedrive,
     subir_excel_onedrive,
     invalidar_cache_onedrive,
+    actualizar_registro
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -431,4 +432,314 @@ def actualizar_registro(
             resultado.get("archivo"),
         "etag":
             resultado.get("etag"),
+    }
+
+def actualizar_registro(
+    nombre_hoja: str,
+    fila_excel: int,
+    nuevos_datos: dict,
+    etag_esperado: str | None = None,
+):
+    import io
+
+    from openpyxl import load_workbook
+
+    from app.services.onedrive_service import (
+        obtener_excel_onedrive,
+        subir_excel_onedrive,
+        invalidar_cache_onedrive,
+    )
+
+    global _KPI_CACHE
+    global _HOJAS_CACHE
+
+    if not nombre_hoja:
+        raise ValueError(
+            "Debe especificarse la hoja."
+        )
+
+    if not isinstance(fila_excel, int):
+        raise ValueError(
+            "fila_excel debe ser un número entero."
+        )
+
+    if fila_excel < 2:
+        raise ValueError(
+            "No se puede modificar la fila de encabezados."
+        )
+
+    if not isinstance(nuevos_datos, dict):
+        raise ValueError(
+            "Los datos deben enviarse como un objeto."
+        )
+
+    if not nuevos_datos:
+        raise ValueError(
+            "No se recibieron campos para actualizar."
+        )
+
+    if _data_source() != "onedrive":
+        raise RuntimeError(
+            "La edición está habilitada solo "
+            "para DATA_SOURCE=onedrive."
+        )
+
+    # Obtener siempre la versión más reciente
+    excel_bytes = obtener_excel_onedrive(
+        force_refresh=True
+    )
+
+    # Abrir el Excel manteniendo sus hojas y formatos
+    workbook = load_workbook(
+        excel_bytes
+    )
+
+    if nombre_hoja not in workbook.sheetnames:
+        raise ValueError(
+            f"No existe la hoja '{nombre_hoja}'."
+        )
+
+    worksheet = workbook[nombre_hoja]
+
+    # Obtener encabezados de la fila 1
+    encabezados = {}
+
+    for columna in range(
+        1,
+        worksheet.max_column + 1
+    ):
+        valor = worksheet.cell(
+            row=1,
+            column=columna
+        ).value
+
+        if valor is None:
+            continue
+
+        encabezados[
+            str(valor).strip()
+        ] = columna
+
+    if fila_excel > worksheet.max_row:
+        raise ValueError(
+            f"La fila {fila_excel} no existe "
+            f"en la hoja '{nombre_hoja}'."
+        )
+
+    campos_actualizados = []
+
+    # Actualizar solamente los campos recibidos
+    for campo, nuevo_valor in nuevos_datos.items():
+
+        # Ignorar identificadores internos
+        if campo.startswith("__"):
+            continue
+
+        if campo not in encabezados:
+            continue
+
+        numero_columna = encabezados[campo]
+
+        worksheet.cell(
+            row=fila_excel,
+            column=numero_columna
+        ).value = nuevo_valor
+
+        campos_actualizados.append(
+            campo
+        )
+
+    if not campos_actualizados:
+        raise ValueError(
+            "Ninguno de los campos enviados "
+            "existe en la hoja."
+        )
+
+    # Guardar Excel en memoria
+    salida = io.BytesIO()
+
+    workbook.save(
+        salida
+    )
+
+    contenido_actualizado = salida.getvalue()
+
+    # Subir Excel actualizado a SharePoint
+    resultado = subir_excel_onedrive(
+        contenido=contenido_actualizado,
+        etag_esperado=etag_esperado,
+    )
+
+    # Limpiar cachés
+    _KPI_CACHE = {
+        "etag": None,
+        "data": None,
+    }
+
+    _HOJAS_CACHE = {
+        "etag": None,
+        "hojas": {},
+    }
+
+    invalidar_cache_onedrive()
+
+    return {
+        "ok": True,
+        "mensaje": "Registro actualizado correctamente.",
+        "hoja": nombre_hoja,
+        "fila_excel": fila_excel,
+        "campos_actualizados": campos_actualizados,
+        "archivo": resultado.get("archivo"),
+        "etag": resultado.get("etag"),
+    }
+
+
+def actualizar_registro(
+    nombre_hoja: str,
+    fila_excel: int,
+    nuevos_datos: dict,
+    etag_esperado: str | None = None,
+):
+    import io
+    from openpyxl import load_workbook
+
+    from app.services.onedrive_service import (
+        obtener_excel_onedrive,
+        subir_excel_onedrive,
+        invalidar_cache_onedrive,
+    )
+
+    global _KPI_CACHE
+    global _HOJAS_CACHE
+
+    if not nombre_hoja:
+        raise ValueError(
+            "Debe especificarse la hoja."
+        )
+
+    if not isinstance(fila_excel, int):
+        raise ValueError(
+            "fila_excel debe ser un número entero."
+        )
+
+    if fila_excel < 2:
+        raise ValueError(
+            "No se puede modificar la fila de encabezados."
+        )
+
+    if not isinstance(nuevos_datos, dict):
+        raise ValueError(
+            "Los datos deben enviarse como un objeto."
+        )
+
+    if not nuevos_datos:
+        raise ValueError(
+            "No se recibieron campos para actualizar."
+        )
+
+    if _data_source() != "onedrive":
+        raise RuntimeError(
+            "La edición está habilitada solo para DATA_SOURCE=onedrive."
+        )
+
+    # Descargar siempre la versión más reciente
+    excel_bytes = obtener_excel_onedrive(
+        force_refresh=True
+    )
+
+    workbook = load_workbook(
+        excel_bytes
+    )
+
+    if nombre_hoja not in workbook.sheetnames:
+        raise ValueError(
+            f"No existe la hoja '{nombre_hoja}'."
+        )
+
+    worksheet = workbook[nombre_hoja]
+
+    # Obtener encabezados de la fila 1
+    encabezados = {}
+
+    for columna in range(
+        1,
+        worksheet.max_column + 1
+    ):
+        valor = worksheet.cell(
+            row=1,
+            column=columna
+        ).value
+
+        if valor is None:
+            continue
+
+        encabezados[
+            str(valor).strip()
+        ] = columna
+
+    if fila_excel > worksheet.max_row:
+        raise ValueError(
+            f"La fila {fila_excel} no existe en la hoja '{nombre_hoja}'."
+        )
+
+    campos_actualizados = []
+
+    for campo, nuevo_valor in nuevos_datos.items():
+
+        if campo.startswith("__"):
+            continue
+
+        if campo not in encabezados:
+            continue
+
+        numero_columna = encabezados[campo]
+
+        worksheet.cell(
+            row=fila_excel,
+            column=numero_columna
+        ).value = nuevo_valor
+
+        campos_actualizados.append(
+            campo
+        )
+
+    if not campos_actualizados:
+        raise ValueError(
+            "Ninguno de los campos enviados existe en la hoja."
+        )
+
+    salida = io.BytesIO()
+
+    workbook.save(
+        salida
+    )
+
+    contenido_actualizado = salida.getvalue()
+
+    resultado = subir_excel_onedrive(
+        contenido=contenido_actualizado,
+        etag_esperado=etag_esperado,
+    )
+
+    # Limpiar cachés
+    _KPI_CACHE = {
+        "etag": None,
+        "data": None,
+    }
+
+    _HOJAS_CACHE = {
+        "etag": None,
+        "hojas": {},
+    }
+
+    invalidar_cache_onedrive()
+
+    return {
+        "ok": True,
+        "mensaje": "Registro actualizado correctamente.",
+        "hoja": nombre_hoja,
+        "fila_excel": fila_excel,
+        "campos_actualizados": campos_actualizados,
+        "archivo": resultado.get("archivo"),
+        "etag": resultado.get("etag"),
     }

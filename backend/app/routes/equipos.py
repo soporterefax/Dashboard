@@ -13,7 +13,6 @@ from app.services.excel_service import (
 
 router = APIRouter()
 
-
 # =========================
 # MODELO DE ACTUALIZACIÓN
 # =========================
@@ -55,15 +54,12 @@ def kpis():
 
 @router.patch("/registro")
 def editar_registro(payload: ActualizarRegistroRequest):
-
-    resultado = actualizar_registro(
+    return actualizar_registro(
         nombre_hoja=payload.hoja,
         fila_excel=payload.fila_excel,
         nuevos_datos=payload.datos,
         etag_esperado=payload.etag,
     )
-
-    return resultado
 
 
 # =========================
